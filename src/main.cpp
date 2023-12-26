@@ -14,6 +14,9 @@ const float BLOB_SIZE = 2.5f;
 const float REPULSION_DIST = 10.0f;
 const float REPULSION_FORCE = 0.1f;
 
+int WINDOW_WIDTH = 640;
+int WINDOW_HEIGHT = 400;
+
 std::vector<std::vector<float> > rule_matrix(NUM_SPECIES, std::vector<float>(NUM_SPECIES));
 std::vector<sf::Color> species_colors(NUM_SPECIES);
 
@@ -94,16 +97,16 @@ public:
             position.x = 0.0f;
             velocity.x *= -1.0f;
         }
-        if (position.x > 640.0f) {
-            position.x = 640.0f;
+        if (position.x > WINDOW_WIDTH) {
+            position.x = WINDOW_WIDTH;
             velocity.x *= -1.0f;
         }
         if (position.y < 0.0f) {
             position.y = 0.0f;
             velocity.y *= -1.0f;
         }
-        if (position.y > 400.0f) {
-            position.y = 400.0f;
+        if (position.y > WINDOW_HEIGHT) {
+            position.y = WINDOW_HEIGHT;
             velocity.y *= -1.0f;
         }
     }
@@ -172,7 +175,7 @@ void draw_blobs(sf::RenderWindow& window, std::vector<Blob>& blobs, sf::VertexAr
 
 int main()
 {
-    sf::RenderWindow window(sf::VideoMode(640, 400), "SFML test 2!");
+    sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "SFML test 2!");
     // sf::CircleShape shape(50.f);
     // shape.setFillColor(sf::Color::Yellow);
 
@@ -214,7 +217,7 @@ int main()
     
     std::vector<Blob> blobs;
     for (int i = 0; i < NUM_BLOBS; ++i) {
-        sf::Vector2f position = sf::Vector2f(random_float(0.0f, 640.0f), random_float(0.0f, 400.0f));
+        sf::Vector2f position = sf::Vector2f(random_float(0.0f, WINDOW_WIDTH), random_float(0.0f, WINDOW_HEIGHT));
         int species_id = random_int(0, NUM_SPECIES);
         Blob blob = Blob(position, species_id);
         blobs.push_back(blob);
@@ -234,6 +237,8 @@ int main()
                 // Create a new view with the size of the window
                 sf::FloatRect visibleArea(0, 0, event.size.width, event.size.height);
                 window.setView(sf::View(visibleArea));
+                WINDOW_WIDTH = event.size.width;
+                WINDOW_HEIGHT = event.size.height;
             }
             if (event.type == sf::Event::KeyPressed) {
                 // Check if the key pressed is the "R" key
