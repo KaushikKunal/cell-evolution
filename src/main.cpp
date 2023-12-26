@@ -4,9 +4,10 @@
 #include <string>
 #include <vector>
 #include <random>
+#include <thread>
 
-const int NUM_SPECIES = 5;
-const int NUM_BLOBS = 1000;
+const int NUM_SPECIES = 8;
+const int NUM_BLOBS = 2000;
 const float MAX_FORCE = 0.05f;
 const float MAX_DIST = 50.0f;
 const float FRICTION = 0.8f;
@@ -14,8 +15,9 @@ const float BLOB_SIZE = 2.5f;
 const float REPULSION_DIST = 10.0f;
 const float REPULSION_FORCE = 0.1f;
 
-int WINDOW_WIDTH = 640;
-int WINDOW_HEIGHT = 400;
+int WINDOW_WIDTH = 1000;
+int WINDOW_HEIGHT = 1000;
+unsigned int num_threads = 1;
 
 std::vector<std::vector<float> > rule_matrix(NUM_SPECIES, std::vector<float>(NUM_SPECIES));
 std::vector<sf::Color> species_colors(NUM_SPECIES);
@@ -128,16 +130,24 @@ public:
         return position;
     }
 
-    sf::Vector2f position;
-    float size;
+    float getSize() const {
+        return size;
+    }
+
 private:
     
     sf::Vector2f velocity;
     int species_id;
-    
-
-    const float FRICTION = 0.9f;
+    sf::Vector2f position;
+    float size;
 };
+
+// interact a certain range of blobs with all other blobs
+void interact_blobs(std::vector<Blob>& blobs, int start, int end) {
+    for (int i = start; i < end; ++i) {
+        blobs[i].interact(blobs);
+    }
+}
 
 void draw_blobs(sf::RenderWindow& window, std::vector<Blob>& blobs, sf::VertexArray& objects_va, sf::Texture& texture) {
     // 0 for superfast vertex array blobs
@@ -151,7 +161,7 @@ void draw_blobs(sf::RenderWindow& window, std::vector<Blob>& blobs, sf::VertexAr
         for (uint32_t i = 0; i < blobs.size(); ++i) {
                 const Blob& object = blobs[i];
                 const uint32_t idx = i << 2;
-                const float radius = object.size;
+                const float radius = object.getSize();
                 sf::Color color = object.getColor();
                 sf::Vector2f pos = object.getPosition();
                 objects_va[idx + 0].position = pos + sf::Vector2f(-radius, -radius);
@@ -193,13 +203,20 @@ int main()
     text.setFillColor(sf::Color::White);
     text.setPosition(10.0f, 10.0f);
 
+    #include <algorithm> // Add this line to include the <algorithm> header for std::max
+
     sf::VertexArray objects_va(sf::Quads, NUM_BLOBS * 4);
     sf::Texture texture;
     texture.loadFromFile("res/images/circle.png");
 
+    // print number of threads available
+    std::vector<std::thread> threads;
+    num_threads = std::max(std::thread::hardware_concurrency(), num_threads);
+    std::cout << "Number of threads: " << num_threads << std::endl;
+
     // For calculating FPS
-    sf::Clock clock;
-    sf::Clock render_clock;
+    sf::Clock fps_clock;
+    sf::Clock timer_clock;
     float timeSinceLastUpdate = 0.f;
     int fps = 150;
     float timePerFrame = 1.f / fps; // 60 fps
@@ -252,7 +269,7 @@ int main()
         }
 
          // Update the scene
-        float elapsedTime = clock.restart().asSeconds();
+        float elapsedTime = fps_clock.restart().asSeconds();
         timeSinceLastUpdate += elapsedTime;
         if (timeSinceLastUpdate > timePerFrame)
         {
@@ -271,38 +288,24 @@ int main()
         // Convert it to world coordinates
         sf::Vector2f worldPos = window.mapPixelToCoords(mousePos);
 
-        // Get the current position of the shape
-        // sf::Vector2f shapePos = shape.getPosition();
-
-        // // Calculate the direction to move
-        // sf::Vector2f direction = worldPos - shapePos;
-
-        // // Normalize the direction
-        // float length = sqrt(direction.x * direction.x + direction.y * direction.y);
-        // if (length != 0) 
-        // {
-        //     direction /= length;
-        // }
-
-        // // Move the shape towards the mouse
-        // shape.move(direction * speed);
-        for (auto& blob : blobs) {
-            blob.interact(blobs);
+        // distribute blob amongs threads and interact
+        timer_clock.restart();
+        threads.clear();
+        for (int i = 0; i < num_threads; ++i) {
+            threads.push_back(std::thread(interact_blobs, std::ref(blobs), i * NUM_BLOBS / num_threads, (i + 1) * NUM_BLOBS / num_threads));
+        }
+        for (auto& thread : threads) {
+            thread.join();
         }
         for (auto& blob : blobs) {
             blob.update();
         }
+        float timer_time = timer_clock.getElapsedTime().asMicroseconds();
+        // text.setString("interact time: " + std::to_string(static_cast<int>(timer_time)));
+        
+        // draw the scene
         window.clear();
-        render_clock.restart();
         draw_blobs(window, blobs, objects_va, texture);
-        float render_time = render_clock.getElapsedTime().asMicroseconds();
-        // text.setString("render time: " + std::to_string(static_cast<int>(render_time)));
-        // for (auto& blob : blobs) {
-        //     blob.update();
-        //     blob.draw(window);
-        // }
-        // blob.update();
-        // blob.draw(window);
         window.draw(text);
         window.display();
     }
