@@ -9,7 +9,7 @@ const int NUM_SPECIES = 5;
 const int NUM_BLOBS = 1000;
 const float MAX_FORCE = 0.05f;
 const float MAX_DIST = 50.0f;
-const float FRICTION = 0.95f;
+const float FRICTION = 0.8f;
 const float BLOB_SIZE = 2.5f;
 const float REPULSION_DIST = 10.0f;
 const float REPULSION_FORCE = 0.1f;
@@ -117,19 +117,58 @@ public:
         window.draw(shape);
     }
 
+    sf::Color getColor() const {
+        return species_colors[species_id];
+    }
+
     sf::Vector2f getPosition() const {
         return position;
     }
 
-
-private:
     sf::Vector2f position;
+    float size;
+private:
+    
     sf::Vector2f velocity;
     int species_id;
-    float size;
+    
 
     const float FRICTION = 0.9f;
 };
+
+void draw_blobs(sf::RenderWindow& window, std::vector<Blob>& blobs, sf::VertexArray& objects_va, sf::Texture& texture) {
+    // 0 for superfast vertex array blobs
+    if (0) {
+        for (auto& blob : blobs) {
+            blob.draw(window);
+        }
+    }
+    else {
+        float texture_size = 1024.0f;
+        for (uint32_t i = 0; i < blobs.size(); ++i) {
+                const Blob& object = blobs[i];
+                const uint32_t idx = i << 2;
+                const float radius = object.size;
+                sf::Color color = object.getColor();
+                sf::Vector2f pos = object.getPosition();
+                objects_va[idx + 0].position = pos + sf::Vector2f(-radius, -radius);
+                objects_va[idx + 1].position = pos + sf::Vector2f(radius, -radius);
+                objects_va[idx + 2].position = pos + sf::Vector2f(radius, radius);
+                objects_va[idx + 3].position = pos + sf::Vector2f(-radius, radius);
+                objects_va[idx + 0].texCoords = {0.0f        , 0.0f};
+                objects_va[idx + 1].texCoords = {texture_size, 0.0f};
+                objects_va[idx + 2].texCoords = {texture_size, texture_size};
+                objects_va[idx + 3].texCoords = {0.0f        , texture_size};
+
+                objects_va[idx + 0].color = color;
+                objects_va[idx + 1].color = color;
+                objects_va[idx + 2].color = color;
+                objects_va[idx + 3].color = color;
+            }
+        window.draw(objects_va, &texture);
+    }
+    
+}
 
 int main()
 {
@@ -151,10 +190,13 @@ int main()
     text.setFillColor(sf::Color::White);
     text.setPosition(10.0f, 10.0f);
 
-    
+    sf::VertexArray objects_va(sf::Quads, NUM_BLOBS * 4);
+    sf::Texture texture;
+    texture.loadFromFile("res/images/circle.png");
 
     // For calculating FPS
     sf::Clock clock;
+    sf::Clock render_clock;
     float timeSinceLastUpdate = 0.f;
     int fps = 150;
     float timePerFrame = 1.f / fps; // 60 fps
@@ -242,11 +284,18 @@ int main()
         for (auto& blob : blobs) {
             blob.interact(blobs);
         }
-        window.clear();
         for (auto& blob : blobs) {
             blob.update();
-            blob.draw(window);
         }
+        window.clear();
+        render_clock.restart();
+        draw_blobs(window, blobs, objects_va, texture);
+        float render_time = render_clock.getElapsedTime().asMicroseconds();
+        // text.setString("render time: " + std::to_string(static_cast<int>(render_time)));
+        // for (auto& blob : blobs) {
+        //     blob.update();
+        //     blob.draw(window);
+        // }
         // blob.update();
         // blob.draw(window);
         window.draw(text);
