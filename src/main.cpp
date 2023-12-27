@@ -6,10 +6,10 @@
 #include <random>
 #include <thread>
 
-const int NUM_SPECIES = 8;
-const int NUM_BLOBS = 2000;
+const int NUM_SPECIES = 2;
+const int NUM_BLOBS = 4000;
 const float MAX_FORCE = 0.05f;
-const float MAX_DIST = 50.0f;
+const float MAX_DIST = 30.0f;
 const float FRICTION = 0.8f;
 const float BLOB_SIZE = 2.5f;
 const float REPULSION_DIST = 10.0f;
@@ -17,7 +17,7 @@ const float REPULSION_FORCE = 0.1f;
 
 int WINDOW_WIDTH = 1000;
 int WINDOW_HEIGHT = 1000;
-unsigned int num_threads = 1;
+unsigned int num_threads = 2;
 
 std::vector<std::vector<float> > rule_matrix(NUM_SPECIES, std::vector<float>(NUM_SPECIES));
 std::vector<sf::Color> species_colors(NUM_SPECIES);
@@ -55,35 +55,39 @@ public:
             size = BLOB_SIZE;
         }
 
+    void interact_with(Blob other_blob) {
+        // calculate the distance between the two blobs
+        sf::Vector2f dist = other_blob.getPosition() - position;
+        float length = sqrt(dist.x * dist.x + dist.y * dist.y);
+        float peak_force = rule_matrix[species_id][other_blob.species_id];
+        float force;
+        float min_dist = size + other_blob.size + REPULSION_DIST;
+        // if the distance is less than the max distance, interact
+        if (length == 0) {  // don't divide by zero (interacting with self)
+            return;
+        }
+        else if (length < min_dist) {
+            force = REPULSION_FORCE * (length / min_dist) - REPULSION_FORCE;
+        }
+        else if (length < (min_dist + MAX_DIST)/2) {
+            force = peak_force * (length - min_dist) / ((min_dist + MAX_DIST) / 2 - min_dist);
+        }
+        else if (length < MAX_DIST) {
+            force = peak_force * (MAX_DIST - length) / (MAX_DIST - (min_dist + MAX_DIST) / 2);
+        }
+        else {
+            return;
+        }
+        // apply the force to the velocity
+        sf::Vector2f force_vector = dist / length * force;
+        velocity += force_vector;
+    }
+
+    // interact with other blobs
     void interact(std::vector<Blob>& blobs) {
         // loop through all other blobs
         for (auto& other_blob : blobs) {
-            // don't interact with yourself
-            if (&other_blob == this) {
-                continue;
-            }
-            // calculate the distance between the two blobs
-            sf::Vector2f dist = other_blob.getPosition() - position;
-            float length = sqrt(dist.x * dist.x + dist.y * dist.y);
-            float peak_force = rule_matrix[species_id][other_blob.species_id];
-            float force;
-            float min_dist = size + other_blob.size + REPULSION_DIST;
-            // if the distance is less than the max distance, interact
-            if (length < min_dist) {
-                force = REPULSION_FORCE * (length / min_dist) - REPULSION_FORCE;
-            }
-            else if (length < (min_dist + MAX_DIST)/2) {
-                force = peak_force * (length - min_dist) / ((min_dist + MAX_DIST) / 2 - min_dist);
-            }
-            else if (length < MAX_DIST) {
-                force = peak_force * (MAX_DIST - length) / (MAX_DIST - (min_dist + MAX_DIST) / 2);
-            }
-            else {
-                continue;
-            }
-            // apply the force to the velocity
-            sf::Vector2f force_vector = dist / length * force;
-            velocity += force_vector;
+            interact_with(other_blob);
         }
     }
 
@@ -149,6 +153,41 @@ void interact_blobs(std::vector<Blob>& blobs, int start, int end) {
     }
 }
 
+// interact blobs in a certain grid cells with blobs in adjacent grid cells (start to end grid cell)
+void interact_blobs_grid(std::vector<Blob>& blobs, std::vector<std::vector<int> >& grid, int grid_width, int grid_height, int start_cell, int end_cell) {
+    assert(grid.size() == grid_width * grid_height);
+    
+    for (int this_cell = start_cell; this_cell < end_cell; ++this_cell) {
+        if (this_cell < 0 || this_cell >= grid_width * grid_height) {
+            continue;
+        }
+        int this_cell_x = this_cell % grid_width;
+        int this_cell_y = this_cell / grid_width;
+        for (int i = 0; i < grid[this_cell].size(); ++i) {
+            int this_blob = grid[this_cell][i];
+            for (int x = -1; x <= 1; ++x) {
+                for (int y = -1; y <=1; ++y) {
+                    int other_cell_x = this_cell_x + x;
+                    int other_cell_y = this_cell_y + y;
+                    if (other_cell_x < 0 || other_cell_x >= grid_width || other_cell_y < 0 || other_cell_y >= grid_height) {
+                        continue;
+                    }
+                    int other_cell = other_cell_y * grid_width + other_cell_x;
+                    for (int j = 0; j < grid[other_cell].size(); ++j) {
+                        int other_blob = grid[other_cell][j];
+                        if (other_blob == this_blob) {
+                            continue;
+                        }
+                        // std::cout << "interacting " << this_blob << " " << other_blob << std::endl;
+                        blobs[this_blob].interact_with(blobs[other_blob]);
+                    }
+                }
+            }
+        }
+    }
+
+}
+
 void draw_blobs(sf::RenderWindow& window, std::vector<Blob>& blobs, sf::VertexArray& objects_va, sf::Texture& texture) {
     // 0 for superfast vertex array blobs
     if (0) {
@@ -211,7 +250,7 @@ int main()
 
     // print number of threads available
     std::vector<std::thread> threads;
-    num_threads = std::max(std::thread::hardware_concurrency(), num_threads);
+    num_threads = std::min(std::thread::hardware_concurrency(), num_threads);
     std::cout << "Number of threads: " << num_threads << std::endl;
 
     // For calculating FPS
@@ -222,12 +261,6 @@ int main()
     float timePerFrame = 1.f / fps; // 60 fps
     // window.setFramerateLimit(fps); // comment this our to uncap
 
-
-    // // The speed at which the ball moves
-    // float speed = 5.0f;
-    // sf::Vector2f position = sf::Vector2f(color_distribution(generator), color_distribution(generator));
-    // sf::Color color = sf::Color(color_distribution(generator), color_distribution(generator), color_distribution(generator));
-    // Blob blob = Blob(position, color);
     // create a vector of blobs, randomizing their positions and colors
     generate_colors();
     generate_rules();
@@ -280,7 +313,25 @@ int main()
             // Reset the timeSinceLastUpdate
             timeSinceLastUpdate = 0.f;
         }
+        int cell_height = MAX_DIST;  // in pixels
+        int cell_width = MAX_DIST;  // in pixels
+        int grid_height = WINDOW_HEIGHT / cell_height + 1;  // in cells
+        int grid_width = WINDOW_WIDTH / cell_width + 1;  // in cells
+        int grid_size = grid_height * grid_width;  // in cells
 
+
+        std::vector<std::vector<int> > grid(grid_size, std::vector<int>());
+        for (int i = 0; i < blobs.size(); ++i) {
+            int grid_x = blobs[i].getPosition().x / cell_width;
+            int grid_y = blobs[i].getPosition().y / cell_height;
+            if (grid_x < 0 || grid_x > WINDOW_WIDTH / cell_width || grid_y < 0 || grid_y > WINDOW_HEIGHT / cell_height) {
+                std::cout << "blob out of bounds " << grid_x << " " << grid_y << std::endl;
+                continue;
+            }
+            // std::cout << "blob " << i << " " << grid_x << " " << grid_y << std::endl;
+            // std::cout << "grid size " << grid.size() << std::endl;
+            grid[grid_y * (WINDOW_HEIGHT / cell_height + 1) + grid_x].push_back(i);
+        }
 
         // Get the current position of the mouse
         sf::Vector2i mousePos = sf::Mouse::getPosition(window);
@@ -288,15 +339,32 @@ int main()
         // Convert it to world coordinates
         sf::Vector2f worldPos = window.mapPixelToCoords(mousePos);
 
-        // distribute blob amongs threads and interact
-        timer_clock.restart();
+        // WITH GRIDS        
+        // interact_blobs_grid(blobs, grid, grid_width, grid_height, 0, grid_size);
+
         threads.clear();
         for (int i = 0; i < num_threads; ++i) {
-            threads.push_back(std::thread(interact_blobs, std::ref(blobs), i * NUM_BLOBS / num_threads, (i + 1) * NUM_BLOBS / num_threads));
+            int start_cell = i * grid_size / num_threads;
+            int end_cell = (i + 1) * grid_size / num_threads;
+            threads.push_back(std::thread(interact_blobs_grid, std::ref(blobs), std::ref(grid), grid_width, grid_height, start_cell, end_cell));
         }
         for (auto& thread : threads) {
             thread.join();
         }
+
+        // WITHOUT GRIDS
+        // for (auto& blob : blobs) {
+        //     blob.interact(blobs);
+        // }
+        // distribute blob amongs threads and interact
+        timer_clock.restart();
+        // threads.clear();
+        // for (int i = 0; i < num_threads; ++i) {
+        //     threads.push_back(std::thread(interact_blobs, std::ref(blobs), i * NUM_BLOBS / num_threads, (i + 1) * NUM_BLOBS / num_threads));
+        // }
+        // for (auto& thread : threads) {
+        //     thread.join();
+        // }
         for (auto& blob : blobs) {
             blob.update();
         }
