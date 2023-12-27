@@ -6,18 +6,18 @@
 #include <random>
 #include <thread>
 
-const int NUM_SPECIES = 2;
-const int NUM_BLOBS = 4000;
+const int NUM_SPECIES = 4;
+const int NUM_BLOBS = 5000;
 const float MAX_FORCE = 0.05f;
 const float MAX_DIST = 30.0f;
-const float FRICTION = 0.8f;
+const float FRICTION = 0.9f;
 const float BLOB_SIZE = 2.5f;
-const float REPULSION_DIST = 10.0f;
-const float REPULSION_FORCE = 0.1f;
+const float REPULSION_DIST = 5.0f;
+const float REPULSION_FORCE = 0.9f;
 
 int WINDOW_WIDTH = 1000;
 int WINDOW_HEIGHT = 1000;
-unsigned int num_threads = 2;
+unsigned int num_threads = 6;
 
 std::vector<std::vector<float> > rule_matrix(NUM_SPECIES, std::vector<float>(NUM_SPECIES));
 std::vector<sf::Color> species_colors(NUM_SPECIES);
@@ -33,7 +33,7 @@ int random_int(int min, int max) {
 void generate_rules() {
     for (int i = 0; i < NUM_SPECIES; ++i) {
         for (int j = 0; j < NUM_SPECIES; ++j) {
-            rule_matrix[i][j] = random_float(-MAX_FORCE, MAX_FORCE);
+            rule_matrix[i][j] = random_float(-MAX_FORCE, MAX_FORCE);  // any force between different species
         }
     }
 }
@@ -54,7 +54,7 @@ public:
             velocity.y = random_float(-1.0f, 1.0f);
             size = BLOB_SIZE;
         }
-
+    
     void interact_with(Blob other_blob) {
         // calculate the distance between the two blobs
         sf::Vector2f dist = other_blob.getPosition() - position;
@@ -81,6 +81,21 @@ public:
         // apply the force to the velocity
         sf::Vector2f force_vector = dist / length * force;
         velocity += force_vector;
+    }
+
+    void interact_with_mouse(sf::Vector2f mousePos, float force) {
+        // calculate the distance between the two blobs
+        sf::Vector2f dist = mousePos - position;
+        float length = sqrt(dist.x * dist.x + dist.y * dist.y);
+        // if the distance is less than the max distance, interact
+        if (length == 0) {  // don't divide by zero
+            return;
+        }
+        else if (length < MAX_DIST) {
+            // apply the force to the velocity
+            sf::Vector2f force_vector = dist / length * force;
+            velocity += force_vector;
+        }
     }
 
     // interact with other blobs
@@ -334,10 +349,7 @@ int main()
         }
 
         // Get the current position of the mouse
-        sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-
-        // Convert it to world coordinates
-        sf::Vector2f worldPos = window.mapPixelToCoords(mousePos);
+        sf::Vector2f mousePos = window.mapPixelToCoords(sf::Mouse::getPosition(window));
 
         // WITH GRIDS        
         // interact_blobs_grid(blobs, grid, grid_width, grid_height, 0, grid_size);
@@ -365,6 +377,9 @@ int main()
         // for (auto& thread : threads) {
         //     thread.join();
         // }
+        for (auto& blob : blobs) {
+            blob.interact_with_mouse(mousePos, -0.5f);
+        }
         for (auto& blob : blobs) {
             blob.update();
         }
